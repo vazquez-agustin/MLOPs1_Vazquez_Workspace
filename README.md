@@ -1,5 +1,4 @@
-# MLOPs1_Vazquez_Workspace
-# Repositorio de Visión por Computadora I
+# Repositorio de Operaciones de Aprendizaje Automático I
 
 - **Profesor:** Facundo Lucianna
 
@@ -11,7 +10,7 @@
 
 ## Descripción
 
-Repositorio de trabajos prácticos de la materia **Visión por Computadora I**, correspondiente a la Carrera de Especialización en Inteligencia Artificial (23Co2025).
+Repositorio de trabajos prácticos de la materia **Operaciones de Aprendizaje Automático I**, correspondiente a la Carrera de Especialización en Inteligencia Artificial (23Co2025).
 
 ## Objetivos de la materia
 
