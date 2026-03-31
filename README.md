@@ -1,46 +1,175 @@
-# Repositorio de Operaciones de Aprendizaje Automático I
+# Proyecto Final - MLOps1: Heart Disease SVM Model
 
-- **Profesor:** Facundo Lucianna
+### Operaciones de Aprendizaje Automático I - CEIA - FIUBA
 
-- **Estudiantes:**
-  - Paola Andrea Blanco (a2303)
-  - Agustín Jesús Vazquez (e2301)
-  - Facundo Manuel Quiroga (a2305)
-  - Victor Gabriel Peralta (a2322) 
+**Equipo:**
+- Paola Andrea Blanco (a2303)
+- Agustín Jesús Vazquez (e2301)
+- Facundo Manuel Quiroga (a2305)
+- Victor Gabriel Peralta (a2322)
+
+**Profesor:** Facundo Lucianna
+
+---
 
 ## Descripción
 
-Repositorio de trabajos prácticos de la materia **Operaciones de Aprendizaje Automático I**, correspondiente a la Carrera de Especialización en Inteligencia Artificial (23Co2025).
+Implementación productiva de un modelo SVM para la detección de enfermedad cardíaca, utilizando la infraestructura de **ML Models and something more Inc.**
 
-## Objetivos de la materia
+El modelo fue originalmente desarrollado en la materia Aprendizaje de Máquina sobre el dataset [Heart Disease (UCI ML Repository)](https://archive.ics.uci.edu/dataset/45/heart+disease), y esta implementación lo lleva a un entorno productivo completo con orquestación, tracking de experimentos y servicio REST API.
 
-El objetivo está centrado en disponibilizar las herramientas de machine learning en un entorno productivo, utilizando herramientas de MLOps.
+## Arquitectura de Servicios
 
-## Evaluación
+| Servicio | Puerto | Descripción |
+|---|---|---|
+| Apache Airflow | [localhost:8080](http://localhost:8080) | Orquestación de pipelines ETL y reentrenamiento |
+| MLflow | [localhost:5001](http://localhost:5001) | Tracking de experimentos y registro de modelos |
+| MinIO (S3) | [localhost:9001](http://localhost:9001) | Data Lake (almacenamiento de datos y artefactos) |
+| FastAPI | [localhost:8800](http://localhost:8800) | REST API para servir predicciones |
+| API Docs | [localhost:8800/docs](http://localhost:8800/docs) | Documentación interactiva de la API (Swagger) |
+| PostgreSQL | localhost:5432 | Base de datos compartida (Airflow + MLflow) |
 
-La evaluación de los conocimientos impartidos durante las clases será a modo de entrega de un trabajo práctico final. El trabajo es grupal (máximo 6 personas, mínimo 2 personas).
+## Estructura del Proyecto
 
-La idea de este trabajo es suponer que trabajamos para **ML Models and something more Inc.**, la cual ofrece un servicio que proporciona modelos mediante una REST API. Internamente, tanto para realizar tareas de DataOps como de MLOps, la empresa cuenta con Apache Airflow y MLflow. También dispone de un Data Lake en S3.
+```
+.
+├── docker-compose.yaml          # Definición de todos los servicios
+├── .env                          # Variables de configuración
+├── .gitignore
+├── README.md
+├── CONTRIBUTING.md
+│
+├── airflow/
+│   ├── dags/
+│   │   ├── etl_process.py       # DAG: Pipeline ETL (fetch → clean → split → normalize)
+│   │   └── retrain_the_model.py # DAG: Reentrenamiento y comparación con champion
+│   ├── secrets/
+│   │   ├── variables.yaml        # Variables de Airflow
+│   │   └── connections.yaml      # Conexiones de Airflow
+│   ├── config/
+│   ├── logs/
+│   └── plugins/
+│
+├── dockerfiles/
+│   ├── airflow/                  # Imagen custom de Airflow
+│   │   ├── Dockerfile
+│   │   └── requirements.txt
+│   ├── mlflow/                   # Imagen custom de MLflow
+│   │   ├── Dockerfile
+│   │   └── requirements.txt
+│   ├── postgres/                 # Imagen custom de PostgreSQL
+│   │   ├── Dockerfile
+│   │   └── mlflow.sql
+│   └── fastapi/                  # Imagen custom de FastAPI
+│       ├── Dockerfile
+│       ├── requirements.txt
+│       ├── app.py                # Aplicación FastAPI
+│       └── files/                # Fallback files (modelo y datos por defecto)
+│           └── data.json
+│
+└── notebook_example/
+    └── hyperparameter_search.ipynb  # Búsqueda de hiperparámetros con MLflow
+```
 
-Ofrecemos tres tipos de evaluaciones:
+## Instalación y Uso
 
-- **Nivel local (nota entre 6 y 8):** Implementar en local un ciclo de desarrollo del modelo que desarrollaron en Aprendizaje de Máquina hasta la generación final del artefacto del modelo entrenado. Deben usar un orquestador y buenas prácticas de desarrollo con buena documentación.
-- **Nivel en contenedores (nota entre 8 y 10):** Implementar el modelo que desarrollaron en Aprendizaje de Máquina en el ambiente productivo. Para ello, pueden usar los recursos que consideren apropiado. Los servicios disponibles de base son Apache Airflow, MLflow, PostgreSQL, MinIO, FastAPI. Todo está montado en Docker, por lo que además deben instalado Docker.
+### Requisitos Previos
+- [Docker](https://docs.docker.com/engine/install/) instalado
+- Al menos 4GB de RAM disponible para Docker
+- Al menos 2 CPUs
 
-## Repositorio con el material
+### 1. Levantar los servicios
 
-Las herramientas para poder armar el proyecto se encuentran en: https://github.com/facundolucianna/amq2-service-ml
+```bash
+docker compose --profile all up
+```
 
-Además dejamos un ejemplo de aplicación en el branch `example_implementation`.
+Esperar hasta que todos los servicios estén healthy (verificar con `docker ps -a`).
 
-## Criterios de aprobación
+### 2. Ejecutar el pipeline ETL
 
-Los criterios de aprobación son los siguientes:
+1. Acceder a Airflow: [http://localhost:8080](http://localhost:8080) (usuario: `airflow`, contraseña: `airflow`)
+2. Activar y ejecutar el DAG `process_etl_heart_data`
+3. Esto creará los datos procesados en el bucket `s3://data`
 
-1. El trabajo se entrega en dos partes.
-2. La entrega consiste en un repositorio en Github o Gitlab con la implementación y documentación.
-3. La fecha de entrega de la primera parte es en la clase 5 y la entrega final es 7 días después de la última clase.
-4. El trabajo es obligatorio ser grupal para evaluar la dinámica de trabajo en un equipo de trabajo típico.
-5. La implementación debe de estar de acuerdo al nivel elegido. Si es importante además de la implementación, hacer una buena documentación.
-6. Son libres de incorporar o cambiar de tecnologías, pero es importante que lo implementado tenga un servicio de orquestación y algún servicio de ciclo de vida de modelos.
-7. La entrega es por medio del aula virtual de la asignatura y solo debe enviarse el link al repositorio en ambas entregas.
+### 3. Búsqueda de hiperparámetros
+
+1. Ejecutar la notebook `notebook_example/hyperparameter_search.ipynb`
+2. Esto entrenará múltiples modelos SVM, registrará el mejor en MLflow, y lo establecerá como "champion"
+
+### 4. Usar la API de predicción
+
+```bash
+curl -X 'POST' \
+  'http://localhost:8800/predict/' \
+  -H 'Content-Type: application/json' \
+  -d '{
+  "features": {
+    "age": 67,
+    "sex": 1,
+    "cp": 4,
+    "trestbps": 160,
+    "chol": 286,
+    "fbs": 0,
+    "restecg": 2,
+    "thalach": 108,
+    "exang": 1,
+    "oldpeak": 1.5,
+    "slope": 2,
+    "ca": 3,
+    "thal": 3
+  }
+}'
+```
+
+Respuesta esperada:
+```json
+{
+  "int_output": true,
+  "str_output": "Heart disease detected"
+}
+```
+
+### 5. Reentrenamiento del modelo (opcional)
+
+1. Ejecutar primero el DAG `process_etl_heart_data` para generar datos nuevos
+2. Ejecutar el DAG `retrain_the_model`
+3. El DAG compara el nuevo modelo con el champion y promueve si es mejor
+
+## Apagar los servicios
+
+```bash
+docker compose --profile all down
+```
+
+Para eliminar toda la infraestructura (datos incluidos):
+
+```bash
+docker compose down --rmi all --volumes
+```
+
+## Conexión con los buckets (desde local)
+
+Para conectarse a MinIO desde notebooks o scripts locales:
+
+```python
+import os
+os.environ['AWS_ACCESS_KEY_ID'] = 'minio'
+os.environ['AWS_SECRET_ACCESS_KEY'] = 'minio123'
+os.environ['AWS_ENDPOINT_URL_S3'] = 'http://localhost:9000'
+os.environ['MLFLOW_S3_ENDPOINT_URL'] = 'http://localhost:9000'
+```
+
+## TODOs para el grupo
+
+- [ ] Generar `files/model.pkl` - modelo SVM por defecto (fallback para la API)
+- [ ] Agregar más métricas o visualizaciones al notebook de hiperparámetros
+- [ ] Considerar usar Optuna en lugar de GridSearchCV para optimización más eficiente
+- [ ] Agregar tests unitarios para la API
+- [ ] Mejorar documentación de los endpoints de FastAPI
+- [ ] Considerar agregar un DAG de monitoreo o drift detection
+
+## Basado en
+
+- [amq2-service-ml](https://github.com/facundolucianna/amq2-service-ml) por Facundo Lucianna
+- Branch de ejemplo: [example_implementation](https://github.com/facundolucianna/amq2-service-ml/tree/example_implementation)

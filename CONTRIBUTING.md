@@ -31,10 +31,10 @@
 
 Respetar la estructura de carpetas existente:
 
-- `airflow/dags/` — DAGs de Airflow
-- `dockerfiles/` — Dockerfiles e imágenes custom
-- `notebook_example/` — Notebooks de experimentación
-- `airflow/secrets/` — Variables y conexiones de Airflow
+- `Proyecto_Final/airflow/dags/` — DAGs de Airflow
+- `Proyecto_Final/dockerfiles/` — Dockerfiles e imágenes custom
+- `Proyecto_Final/notebook_example/` — Notebooks de experimentación
+- `Proyecto_Final/airflow/secrets/` — Variables y conexiones de Airflow
 
 ## Buenas prácticas
 
@@ -47,7 +47,6 @@ Respetar la estructura de carpetas existente:
 ## Levantar el entorno de desarrollo
 
 ```bash
-cd Proyecto_Final
 docker compose --profile all up
 ```
 
