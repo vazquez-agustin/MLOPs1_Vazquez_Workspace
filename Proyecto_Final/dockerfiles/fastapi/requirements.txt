@@ -1,0 +1,7 @@
+fastapi>=0.116
+uvicorn>=0.27
+boto3>=1.38
+mlflow>=3.1
+numpy>=1.24
+pandas>=2.0
+scikit-learn>=1.3
