@@ -1,4 +1,4 @@
-# Proyecto Final - MLOps1: Heart Disease SVM Model
+# Proyecto Final - MLOps1: RainTomorrow Prediction Model
 
 ### Operaciones de Aprendizaje Automático I - CEIA - FIUBA
 
@@ -14,9 +14,35 @@
 
 ## Descripción
 
-Implementación productiva de un modelo SVM para la detección de enfermedad cardíaca, utilizando la infraestructura de **ML Models and something more Inc.**
+Implementación productiva de un modelo de machine learning para la predicción de lluvia al día siguiente (`RainTomorrow`), utilizando la infraestructura de **ML Models and something more Inc.**
 
-El modelo fue originalmente desarrollado en la materia Aprendizaje de Máquina sobre el dataset [Heart Disease (UCI ML Repository)](https://archive.ics.uci.edu/dataset/45/heart+disease), y esta implementación lo lleva a un entorno productivo completo con orquestación, tracking de experimentos y servicio REST API.
+El modelo fue originalmente desarrollado en la materia **Aprendizaje de Máquina I** sobre el dataset *Rain in Australia*, y en este proyecto se lo lleva a un entorno productivo completo incorporando prácticas de **MLOps**:
+
+- Orquestación de pipelines con Apache Airflow  
+- Tracking de experimentos y modelos con MLflow  
+- Data Lake basado en S3 (MinIO)  
+- Servicio de predicción mediante API REST con FastAPI  
+
+## Problema de Negocio
+
+El objetivo es predecir si lloverá al día siguiente en distintas localidades de Australia, a partir de variables meteorológicas actuales.
+
+Este tipo de modelo puede utilizarse para:
+- planificación agrícola  
+- logística y transporte  
+- toma de decisiones en energía y recursos  
+
+---
+
+## Dataset
+
+- **Fuente:** Rain in Australia (Kaggle)
+- **Observaciones:** ~145.000
+- **Variables:** 23
+- **Variable objetivo:** `RainTomorrow` (Yes / No)
+- **Desbalance:** ~77% No / 23% Yes
+
+---
 
 ## Arquitectura de Servicios
 
@@ -28,6 +54,33 @@ El modelo fue originalmente desarrollado en la materia Aprendizaje de Máquina s
 | FastAPI | [localhost:8800](http://localhost:8800) | REST API para servir predicciones |
 | API Docs | [localhost:8800/docs](http://localhost:8800/docs) | Documentación interactiva de la API (Swagger) |
 | PostgreSQL | localhost:5432 | Base de datos compartida (Airflow + MLflow) |
+
+---
+
+## Arquitectura del Pipeline
+
+El flujo completo del sistema es el siguiente:
+
+Raw → ETL → Train → MLflow → API
+
+### ETL Pipeline (Airflow)
+- Extracción de datos
+- Limpieza de valores faltantes
+- Encoding de variables categóricas
+- Escalado de variables numéricas
+- Split train/test
+
+### Training Pipeline
+- Entrenamiento de múltiples modelos
+- Optimización de hiperparámetros
+- Evaluación de métricas
+- Registro en MLflow
+
+### Model Serving
+- Exposición del modelo mediante FastAPI
+- Endpoint `/predict`
+
+---
 
 ## Estructura del Proyecto
 
@@ -89,13 +142,21 @@ Esperar hasta que todos los servicios estén healthy (verificar con `docker ps -
 ### 2. Ejecutar el pipeline ETL
 
 1. Acceder a Airflow: [http://localhost:8080](http://localhost:8080) (usuario: `airflow`, contraseña: `airflow`)
-2. Activar y ejecutar el DAG `process_etl_heart_data`
+2. Activar y ejecutar el DAG `process_etl_rain_data`
 3. Esto creará los datos procesados en el bucket `s3://data`
 
 ### 3. Búsqueda de hiperparámetros
 
 1. Ejecutar la notebook `notebook_example/hyperparameter_search.ipynb`
-2. Esto entrenará múltiples modelos SVM, registrará el mejor en MLflow, y lo establecerá como "champion"
+2. Se entrenan distintos modelos:
+- Logistig Regression
+- Random Forest
+- XGBoost
+3. Se selecciona el mejor modelo según:
+- ROC-AUC
+- F1-score
+- Brier Score
+4. El modelo se registra en MLFlow como **champion**.
 
 ### 4. Usar la API de predicción
 
@@ -105,19 +166,13 @@ curl -X 'POST' \
   -H 'Content-Type: application/json' \
   -d '{
   "features": {
-    "age": 67,
-    "sex": 1,
-    "cp": 4,
-    "trestbps": 160,
-    "chol": 286,
-    "fbs": 0,
-    "restecg": 2,
-    "thalach": 108,
-    "exang": 1,
-    "oldpeak": 1.5,
-    "slope": 2,
-    "ca": 3,
-    "thal": 3
+    "Location": "Sydney",
+    "MinTemp": 13.4,
+    "MaxTemp": 22.9,
+    "Rainfall": 0.6,
+    "Humidity3pm": 71,
+    "Pressure3pm": 1015.3,
+    "WindSpeed3pm": 24
   }
 }'
 ```
@@ -125,14 +180,14 @@ curl -X 'POST' \
 Respuesta esperada:
 ```json
 {
-  "int_output": true,
-  "str_output": "Heart disease detected"
+  "int_output": 1,
+  "str_output": "Rain expected tomorrow"
 }
 ```
 
 ### 5. Reentrenamiento del modelo (opcional)
 
-1. Ejecutar primero el DAG `process_etl_heart_data` para generar datos nuevos
+1. Ejecutar primero el DAG `process_etl_rain_data` para generar datos nuevos
 2. Ejecutar el DAG `retrain_the_model`
 3. El DAG compara el nuevo modelo con el champion y promueve si es mejor
 
@@ -162,7 +217,7 @@ os.environ['MLFLOW_S3_ENDPOINT_URL'] = 'http://localhost:9000'
 
 ## TODOs para el grupo
 
-- [ ] Generar `files/model.pkl` - modelo SVM por defecto (fallback para la API)
+- [ ] Generar modelo fallback (model.pkl)
 - [ ] Agregar más métricas o visualizaciones al notebook de hiperparámetros
 - [ ] Considerar usar Optuna en lugar de GridSearchCV para optimización más eficiente
 - [ ] Agregar tests unitarios para la API
