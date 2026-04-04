@@ -1,7 +1,7 @@
 """
 ### Retrain Rain Prediction Model
 
-This DAG retrains the Rain Prediction SVM model using fresh data from the S3 bucket.
+This DAG retrains the Rain Prediction XGBoost model using fresh data from the S3 bucket.
 It compares the new model against the current champion model and promotes the new
 model if it achieves a better F1 score.
 
@@ -26,9 +26,9 @@ default_args = {
 
 @dag(
     dag_id="retrain_the_model",
-    description="Retrain the Rain Prediction SVM model and compare with the champion.",
+    description="Retrain the Rain Prediction XGBoost model and compare with the champion.",
     doc_md=markdown_text,
-    tags=["Retrain", "Rain Prediction", "SVM"],
+    tags=["Retrain", "Rain Prediction", "XGBoost"],
     default_args=default_args,
     catchup=False,
 )
@@ -41,29 +41,25 @@ def retrain_the_model():
             "awswrangler==3.6.0",
             "scikit-learn==1.3.2",
             "mlflow==2.10.2",
-            "matplotlib==3.8.2",
-            "seaborn==0.13.1",
+            "xgboost==2.0.3",
         ],
         system_site_packages=True,
     )
     def train_new_model():
         """
-        Train a new SVM model on the latest data from S3.
+        Train a new XGBoost model on the latest data from S3.
 
         - Loads train/test data from s3://data/final/
-        - Trains an SVM with the best hyperparameters from the champion model
+        - Recupera los hiperparámetros del champion model desde MLflow Registry
+        - Entrena un XGBClassifier con esos hiperparámetros
         - Logs metrics and model to MLflow
         - Returns the new run_id
-
-        TODO: Complete the SVM training logic.
-              Use the hyperparameters from the champion model's MLflow registry
-              or define new hyperparameter ranges for GridSearchCV.
         """
         import mlflow
         import awswrangler as wr
         import pandas as pd
         import numpy as np
-        from sklearn.svm import SVC
+        from xgboost import XGBClassifier
         from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score
 
         # Load data from S3
@@ -79,14 +75,36 @@ def retrain_the_model():
         mlflow.set_tracking_uri('http://mlflow:5000')
         experiment = mlflow.set_experiment("Rain Prediction")
 
+        # Recuperar hiperparámetros del champion
+        model_name = "rain_prediction_model_prod"
+        client = mlflow.MlflowClient()
+        try:
+            champion_data = client.get_model_version_by_alias(model_name, "champion")
+            params = client.get_run(champion_data.run_id).data.params
+            n_estimators = int(params.get("n_estimators", 200))
+            max_depth = int(params.get("max_depth", 5))
+            learning_rate = float(params.get("learning_rate", 0.1))
+            subsample = float(params.get("subsample", 0.8))
+            scale_pos_weight = float(params.get("scale_pos_weight", 4))
+        except Exception:
+            n_estimators, max_depth, learning_rate, subsample, scale_pos_weight = 200, 5, 0.1, 0.8, 4
+
         with mlflow.start_run(
             run_name='retrain_' + pd.Timestamp.now().strftime('%Y%m%d_%H%M%S'),
             experiment_id=experiment.experiment_id,
-            tags={"experiment": "retrain", "model": "SVM"},
+            tags={"experiment": "retrain", "model": "XGBoost"},
         ) as run:
-            # TODO: Load champion hyperparameters or define new ones
-            # For now, use a basic SVM configuration
-            model = SVC(kernel='rbf', C=1.0, gamma='scale', probability=True)
+            model = XGBClassifier(
+                n_estimators=n_estimators,
+                max_depth=max_depth,
+                learning_rate=learning_rate,
+                subsample=subsample,
+                scale_pos_weight=scale_pos_weight,
+                use_label_encoder=False,
+                eval_metric='logloss',
+                random_state=42,
+                n_jobs=-1,
+            )
             model.fit(X_train, y_train)
 
             # Evaluate
@@ -96,6 +114,15 @@ def retrain_the_model():
             precision = precision_score(y_test, y_pred)
             recall = recall_score(y_test, y_pred)
 
+            # Log params
+            mlflow.log_params({
+                "n_estimators": n_estimators,
+                "max_depth": max_depth,
+                "learning_rate": learning_rate,
+                "subsample": subsample,
+                "scale_pos_weight": scale_pos_weight,
+            })
+
             # Log metrics
             mlflow.log_metric("f1_score", f1)
             mlflow.log_metric("accuracy", accuracy)
@@ -103,7 +130,7 @@ def retrain_the_model():
             mlflow.log_metric("recall", recall)
 
             # Log model
-            mlflow.sklearn.log_model(model, "svm_rain_prediction")
+            mlflow.sklearn.log_model(model, "xgboost_rain_prediction")
 
             return run.info.run_id
 
@@ -146,7 +173,7 @@ def retrain_the_model():
         # Compare and promote if new model is better
         if new_f1 > champion_f1:
             # Register the new model
-            model_uri = f"runs:/{new_run_id}/svm_rain_prediction"
+            model_uri = f"runs:/{new_run_id}/xgboost_rain_prediction"
             mv = mlflow.register_model(model_uri, model_name)
 
             # Set as champion
