@@ -1,7 +1,7 @@
 """
-### Retrain Heart Disease Model
+### Retrain Rain Prediction Model
 
-This DAG retrains the Heart Disease SVM model using fresh data from the S3 bucket.
+This DAG retrains the Rain Prediction SVM model using fresh data from the S3 bucket.
 It compares the new model against the current champion model and promotes the new
 model if it achieves a better F1 score.
 
@@ -26,9 +26,9 @@ default_args = {
 
 @dag(
     dag_id="retrain_the_model",
-    description="Retrain the Heart Disease SVM model and compare with the champion.",
+    description="Retrain the Rain Prediction SVM model and compare with the champion.",
     doc_md=markdown_text,
-    tags=["Retrain", "Heart Disease", "SVM"],
+    tags=["Retrain", "Rain Prediction", "SVM"],
     default_args=default_args,
     catchup=False,
 )
@@ -67,17 +67,17 @@ def retrain_the_model():
         from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score
 
         # Load data from S3
-        X_train = wr.s3.read_csv("s3://data/final/train/heart_X_train.csv")
-        y_train = wr.s3.read_csv("s3://data/final/train/heart_y_train.csv")
-        X_test = wr.s3.read_csv("s3://data/final/test/heart_X_test.csv")
-        y_test = wr.s3.read_csv("s3://data/final/test/heart_y_test.csv")
+        X_train = wr.s3.read_csv("s3://data/final/train/weather_X_train.csv")
+        y_train = wr.s3.read_csv("s3://data/final/train/weather_y_train.csv")
+        X_test = wr.s3.read_csv("s3://data/final/test/weather_X_test.csv")
+        y_test = wr.s3.read_csv("s3://data/final/test/weather_y_test.csv")
 
         y_train = y_train.values.ravel()
         y_test = y_test.values.ravel()
 
         # Setup MLflow
         mlflow.set_tracking_uri('http://mlflow:5000')
-        experiment = mlflow.set_experiment("Heart Disease")
+        experiment = mlflow.set_experiment("Rain Prediction")
 
         with mlflow.start_run(
             run_name='retrain_' + pd.Timestamp.now().strftime('%Y%m%d_%H%M%S'),
@@ -103,7 +103,7 @@ def retrain_the_model():
             mlflow.log_metric("recall", recall)
 
             # Log model
-            mlflow.sklearn.log_model(model, "svm_heart_disease")
+            mlflow.sklearn.log_model(model, "svm_rain_prediction")
 
             return run.info.run_id
 
@@ -122,15 +122,13 @@ def retrain_the_model():
         - Loads both models' F1 scores from MLflow
         - If the new model is better, promotes it as the new champion
         - Otherwise, keeps the existing champion
-
-        TODO: Complete the comparison and promotion logic.
         """
         import mlflow
 
         mlflow.set_tracking_uri('http://mlflow:5000')
         client = mlflow.MlflowClient()
 
-        model_name = "heart_disease_model_prod"
+        model_name = "rain_prediction_model_prod"
 
         # Get new model metrics
         new_run = client.get_run(new_run_id)
@@ -148,7 +146,7 @@ def retrain_the_model():
         # Compare and promote if new model is better
         if new_f1 > champion_f1:
             # Register the new model
-            model_uri = f"runs:/{new_run_id}/svm_heart_disease"
+            model_uri = f"runs:/{new_run_id}/svm_rain_prediction"
             mv = mlflow.register_model(model_uri, model_name)
 
             # Set as champion

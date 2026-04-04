@@ -1,15 +1,11 @@
 {
-  "columns": ["age", "sex", "cp", "trestbps", "chol", "fbs", "restecg", "thalach", "exang", "oldpeak", "slope", "ca", "thal"],
-  "columns_after_dummy": ["age", "sex", "trestbps", "chol", "fbs", "thalach", "exang", "oldpeak", "cp_2", "cp_3", "cp_4", "restecg_1", "restecg_2", "slope_2", "slope_3", "ca_1", "ca_2", "ca_3", "thal_6", "thal_7"],
-  "target_col": "num",
-  "categorical_columns": ["cp", "restecg", "slope", "ca", "thal"],
+  "columns": ["Location", "MinTemp", "MaxTemp", "Rainfall", "Humidity3pm", "Pressure3pm", "WindSpeed3pm"],
+  "columns_after_dummy": ["MinTemp", "MaxTemp", "Rainfall", "Humidity3pm", "Pressure3pm", "WindSpeed3pm", "Location_Albany", "Location_Albury", "Location_AliceSprings", "Location_BadgerysCreek", "Location_Ballarat", "Location_Bendigo", "Location_Brisbane", "Location_Cairns", "Location_Canberra", "Location_Cobar", "Location_CoffsHarbour", "Location_Dartmoor", "Location_Darwin", "Location_GoldCoast", "Location_Hobart", "Location_Katherine", "Location_Launceston", "Location_Melbourne", "Location_MelbourneAirport", "Location_Mildura", "Location_Moree", "Location_MountGambier", "Location_MountGinini", "Location_Newcastle", "Location_Nhil", "Location_NorahHead", "Location_NorfolkIsland", "Location_Nuriootpa", "Location_PearceRAAF", "Location_Penrith", "Location_Perth", "Location_PerthAirport", "Location_Portland", "Location_Richmond", "Location_Sale", "Location_SalmonGums", "Location_Sydney", "Location_SydneyAirport", "Location_Townsville", "Location_Tuggeranong", "Location_Uluru", "Location_WaggaWagga", "Location_Walpole", "Location_Watsonia", "Location_Williamtown", "Location_Witchcliffe", "Location_Wollongong", "Location_Woomera"],
+  "target_col": "RainTomorrow",
+  "categorical_columns": ["Location"],
   "categories_values_per_categorical": {
-    "cp": [1, 2, 3, 4],
-    "restecg": [0, 1, 2],
-    "slope": [1, 2, 3],
-    "ca": [0, 1, 2, 3],
-    "thal": [3, 6, 7]
+    "Location": ["Adelaide", "Albany", "Albury", "AliceSprings", "BadgerysCreek", "Ballarat", "Bendigo", "Brisbane", "Cairns", "Canberra", "Cobar", "CoffsHarbour", "Dartmoor", "Darwin", "GoldCoast", "Hobart", "Katherine", "Launceston", "Melbourne", "MelbourneAirport", "Mildura", "Moree", "MountGambier", "MountGinini", "Newcastle", "Nhil", "NorahHead", "NorfolkIsland", "Nuriootpa", "PearceRAAF", "Penrith", "Perth", "PerthAirport", "Portland", "Richmond", "Sale", "SalmonGums", "Sydney", "SydneyAirport", "Townsville", "Tuggeranong", "Uluru", "WaggaWagga", "Walpole", "Watsonia", "Williamtown", "Witchcliffe", "Wollongong", "Woomera"]
   },
-  "standard_scaler_mean": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  "standard_scaler_std": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+  "standard_scaler_mean": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  "standard_scaler_std": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
 }

@@ -1,16 +1,16 @@
 """
-### ETL Process for Heart Disease Data
+### ETL Process for Rain Tomorrow Prediction
 
-This DAG extracts information from the original CSV file stored in the
-UCI Machine Learning Repository of the
-[Heart Disease repository](https://archive.ics.uci.edu/dataset/45/heart+disease).
+This DAG extracts information from the **weatherAUS.csv** dataset
+(Rain in Australia — Kaggle).
 
 It preprocesses the data by:
-1. Fetching raw data from UCI repository
-2. Cleaning duplicates and NaN values
-3. Creating dummy variables for categorical features
-4. Splitting into train/test sets (70/30, stratified)
-5. Normalizing numerical features with StandardScaler
+1. Reading raw data from the local CSV file
+2. Selecting relevant features and converting the target variable
+3. Cleaning duplicates and NaN values
+4. Creating dummy variables for categorical features (Location)
+5. Splitting into train/test sets (70/30, stratified)
+6. Normalizing numerical features with StandardScaler
 
 After preprocessing, the data is saved into a S3 bucket as separate
 CSV files for training and testing.
@@ -35,47 +35,52 @@ default_args = {
 
 
 @dag(
-    dag_id="process_etl_heart_data",
-    description="ETL process for heart disease data: fetch, clean, feature engineer, split, and normalize.",
+    dag_id="process_etl_rain_data",
+    description="ETL process for rain prediction data: fetch, clean, feature engineer, split, and normalize.",
     doc_md=markdown_text,
-    tags=["ETL", "Heart Disease"],
+    tags=["ETL", "Rain Prediction"],
     default_args=default_args,
     catchup=False,
 )
-def process_etl_heart_data():
-    """Main DAG definition for the Heart Disease ETL pipeline."""
+def process_etl_rain_data():
+    """Main DAG definition for the Rain Tomorrow ETL pipeline."""
 
     @task.virtualenv(
         task_id="obtain_original_data",
-        requirements=["ucimlrepo==0.0.3",
-                       "awswrangler==3.6.0"],
+        requirements=["awswrangler==3.6.0"],
         system_site_packages=True
     )
     def get_data():
         """
-        Load the raw Heart Disease data from the UCI repository
-        and save it to S3 as a CSV file.
+        Load the raw weatherAUS data from the local CSV file
+        and save it to S3.
 
-        - Fetches dataset id=45 (Heart Disease) from ucimlrepo
-        - Converts target variable: presence (>0) → 1, absence (0) → 0
-        - Saves raw CSV to s3://data/raw/heart.csv
+        - Reads dataset/weatherAUS.csv mounted at /opt/airflow/dataset/
+        - Selects relevant feature columns and target variable
+        - Converts target RainTomorrow: Yes → 1, No → 0
+        - Saves raw CSV to s3://data/raw/weather.csv
         """
         import awswrangler as wr
-        from ucimlrepo import fetch_ucirepo
+        import pandas as pd
         from airflow.models import Variable
 
-        # Fetch dataset from UCI repository
-        heart_disease = fetch_ucirepo(id=45)
+        # Read dataset from local mount
+        dataframe = pd.read_csv("/opt/airflow/dataset/weatherAUS.csv")
 
-        data_path = "s3://data/raw/heart.csv"
-        dataframe = heart_disease.data.original
+        target_col = Variable.get("target_col_rain")
 
-        target_col = Variable.get("target_col_heart")
+        # Select relevant features
+        selected_columns = [
+            "Location", "MinTemp", "MaxTemp", "Rainfall",
+            "Humidity3pm", "Pressure3pm", "WindSpeed3pm",
+            target_col
+        ]
+        dataframe = dataframe[selected_columns]
 
-        # Replace levels of heart disease to binary:
-        # presence (values 1,2,3,4) → 1, absence (value 0) → 0
-        dataframe.loc[dataframe[target_col] > 0, target_col] = 1
+        # Convert target to binary: Yes → 1, No → 0
+        dataframe[target_col] = dataframe[target_col].map({"Yes": 1, "No": 0})
 
+        data_path = "s3://data/raw/weather.csv"
         wr.s3.to_csv(df=dataframe,
                      path=data_path,
                      index=False)
@@ -92,9 +97,8 @@ def process_etl_heart_data():
         Steps:
         - Read raw data from S3
         - Clean duplicates and NaN values
-        - Force int types on categorical columns
-        - Apply pd.get_dummies on: cp, restecg, slope, ca, thal
-        - Save processed data to s3://data/raw/heart_dummies.csv
+        - Apply pd.get_dummies on: Location
+        - Save processed data to s3://data/raw/weather_dummies.csv
         - Save dataset metadata (columns, dtypes, categories) to s3://data/data_info/data.json
         - Log datasets to MLflow experiment
         """
@@ -110,8 +114,8 @@ def process_etl_heart_data():
 
         from airflow.models import Variable
 
-        data_original_path = "s3://data/raw/heart.csv"
-        data_end_path = "s3://data/raw/heart_dummies.csv"
+        data_original_path = "s3://data/raw/weather.csv"
+        data_end_path = "s3://data/raw/weather_dummies.csv"
         dataset = wr.s3.read_csv(data_original_path)
 
         # Clean duplicates
@@ -119,10 +123,8 @@ def process_etl_heart_data():
         # Drop NaN
         dataset.dropna(inplace=True, ignore_index=True)
 
-        # Force type in categorical columns
-        categories_list = ["cp", "restecg", "slope", "ca", "thal"]
-        for col in categories_list:
-            dataset[col] = dataset[col].astype(int)
+        # Categorical columns to encode
+        categories_list = ["Location"]
 
         # Create dummy variables
         dataset_with_dummies = pd.get_dummies(
@@ -148,7 +150,7 @@ def process_etl_heart_data():
             if e.response['Error']['Code'] != "404":
                 raise e
 
-        target_col = Variable.get("target_col_heart")
+        target_col = Variable.get("target_col_rain")
         dataset_log = dataset.drop(columns=target_col)
         dataset_with_dummies_log = dataset_with_dummies.drop(columns=target_col)
 
@@ -164,7 +166,7 @@ def process_etl_heart_data():
 
         category_dummies_dict = {}
         for category in categories_list:
-            category_dummies_dict[category] = np.sort(dataset_log[category].unique()).tolist()
+            category_dummies_dict[category] = sorted(dataset_log[category].unique().tolist())
         data_dict['categories_values_per_categorical'] = category_dummies_dict
 
         data_dict['date'] = datetime.datetime.today().strftime('%Y/%m/%d-%H:%M:%S')
@@ -178,26 +180,26 @@ def process_etl_heart_data():
 
         # Log to MLflow
         mlflow.set_tracking_uri('http://mlflow:5000')
-        experiment = mlflow.set_experiment("Heart Disease")
+        experiment = mlflow.set_experiment("Rain Prediction")
 
         mlflow.start_run(
             run_name='ETL_run_' + datetime.datetime.today().strftime('%Y/%m/%d-%H:%M:%S'),
             experiment_id=experiment.experiment_id,
-            tags={"experiment": "etl", "dataset": "Heart disease"},
+            tags={"experiment": "etl", "dataset": "Rain in Australia"},
             log_system_metrics=True
         )
 
         mlflow_dataset = mlflow.data.from_pandas(
             dataset,
-            source="https://archive.ics.uci.edu/dataset/45/heart+disease",
+            source="https://www.kaggle.com/datasets/jsphyg/weather-dataset-rattle-package",
             targets=target_col,
-            name="heart_data_complete"
+            name="weather_data_complete"
         )
         mlflow_dataset_dummies = mlflow.data.from_pandas(
             dataset_with_dummies,
-            source="https://archive.ics.uci.edu/dataset/45/heart+disease",
+            source="https://www.kaggle.com/datasets/jsphyg/weather-dataset-rattle-package",
             targets=target_col,
-            name="heart_data_complete_with_dummies"
+            name="weather_data_complete_with_dummies"
         )
         mlflow.log_input(mlflow_dataset, context="Dataset")
         mlflow.log_input(mlflow_dataset_dummies, context="Dataset")
@@ -222,11 +224,11 @@ def process_etl_heart_data():
         def save_to_csv(df, path):
             wr.s3.to_csv(df=df, path=path, index=False)
 
-        data_original_path = "s3://data/raw/heart_dummies.csv"
+        data_original_path = "s3://data/raw/weather_dummies.csv"
         dataset = wr.s3.read_csv(data_original_path)
 
-        test_size = float(Variable.get("test_size_heart"))
-        target_col = Variable.get("target_col_heart")
+        test_size = float(Variable.get("test_size_rain"))
+        target_col = Variable.get("target_col_rain")
 
         X = dataset.drop(columns=target_col)
         y = dataset[[target_col]]
@@ -235,10 +237,10 @@ def process_etl_heart_data():
             X, y, test_size=test_size, stratify=y
         )
 
-        save_to_csv(X_train, "s3://data/final/train/heart_X_train.csv")
-        save_to_csv(X_test, "s3://data/final/test/heart_X_test.csv")
-        save_to_csv(y_train, "s3://data/final/train/heart_y_train.csv")
-        save_to_csv(y_test, "s3://data/final/test/heart_y_test.csv")
+        save_to_csv(X_train, "s3://data/final/train/weather_X_train.csv")
+        save_to_csv(X_test, "s3://data/final/test/weather_X_test.csv")
+        save_to_csv(y_train, "s3://data/final/train/weather_y_train.csv")
+        save_to_csv(y_test, "s3://data/final/test/weather_y_test.csv")
 
     @task.virtualenv(
         task_id="normalize_numerical_features",
@@ -268,8 +270,8 @@ def process_etl_heart_data():
         def save_to_csv(df, path):
             wr.s3.to_csv(df=df, path=path, index=False)
 
-        X_train = wr.s3.read_csv("s3://data/final/train/heart_X_train.csv")
-        X_test = wr.s3.read_csv("s3://data/final/test/heart_X_test.csv")
+        X_train = wr.s3.read_csv("s3://data/final/train/weather_X_train.csv")
+        X_test = wr.s3.read_csv("s3://data/final/test/weather_X_test.csv")
 
         sc_X = StandardScaler(with_mean=True, with_std=True)
         X_train_arr = sc_X.fit_transform(X_train)
@@ -278,8 +280,8 @@ def process_etl_heart_data():
         X_train = pd.DataFrame(X_train_arr, columns=X_train.columns)
         X_test = pd.DataFrame(X_test_arr, columns=X_test.columns)
 
-        save_to_csv(X_train, "s3://data/final/train/heart_X_train.csv")
-        save_to_csv(X_test, "s3://data/final/test/heart_X_test.csv")
+        save_to_csv(X_train, "s3://data/final/train/weather_X_train.csv")
+        save_to_csv(X_test, "s3://data/final/test/weather_X_test.csv")
 
         # Update dataset metadata with scaler info
         client = boto3.client('s3')
@@ -304,7 +306,7 @@ def process_etl_heart_data():
 
         # Log to MLflow
         mlflow.set_tracking_uri('http://mlflow:5000')
-        experiment = mlflow.set_experiment("Heart Disease")
+        experiment = mlflow.set_experiment("Rain Prediction")
 
         list_run = mlflow.search_runs([experiment.experiment_id], output_format="list")
 
@@ -319,4 +321,4 @@ def process_etl_heart_data():
     get_data() >> make_dummies_variables() >> split_dataset() >> normalize_data()
 
 
-dag = process_etl_heart_data()
+dag = process_etl_rain_data()
