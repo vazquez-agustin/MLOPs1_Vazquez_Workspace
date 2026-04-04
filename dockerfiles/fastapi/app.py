@@ -1,7 +1,7 @@
 """
 RainTomorrow Prediction API
 
-REST API that serves the Rain Prediction SVM classification model.
+REST API that serves the Rain Prediction XGBoost classification model.
 Loads the model from MLflow model registry and provides prediction endpoints.
 
 Authors: Paola Blanco, Agustín Vazquez, Facundo Quiroga, Victor Peralta
@@ -187,7 +187,7 @@ model, version_model, data_dict = load_model("rain_prediction_model_prod", "cham
 
 app = FastAPI(
     title="RainTomorrow Prediction API",
-    description="REST API for predicting rain tomorrow using an SVM model. "
+    description="REST API for predicting rain tomorrow using an XGBoost model. "
                 "Part of the MLOps1 final project.",
     version="1.0.0",
 )
