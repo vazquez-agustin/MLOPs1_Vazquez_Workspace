@@ -1,7 +1,7 @@
 """
-Heart Disease Detector API
+RainTomorrow Prediction API
 
-REST API that serves the Heart Disease SVM classification model.
+REST API that serves the Rain Prediction SVM classification model.
 Loads the model from MLflow model registry and provides prediction endpoints.
 
 Authors: Paola Blanco, Agustín Vazquez, Facundo Quiroga, Victor Peralta
@@ -84,7 +84,7 @@ def check_model():
     global version_model
 
     try:
-        model_name = "heart_disease_model_prod"
+        model_name = "rain_prediction_model_prod"
         alias = "champion"
 
         mlflow.set_tracking_uri('http://mlflow:5000')
@@ -105,83 +105,50 @@ def check_model():
 
 class ModelInput(BaseModel):
     """
-    Input schema for the heart disease prediction model.
+    Input schema for the rain prediction model.
 
-    Defines the 13 clinical features required for prediction,
-    with validation constraints matching the Heart Disease dataset.
+    Defines the meteorological features required for prediction,
+    matching the weatherAUS dataset.
     """
-    age: int = Field(
-        description="Age of the patient",
+    Location: str = Field(
+        description="Location of the weather station in Australia",
+    )
+    MinTemp: float = Field(
+        description="Minimum temperature in degrees Celsius",
+        ge=-20, le=60,
+    )
+    MaxTemp: float = Field(
+        description="Maximum temperature in degrees Celsius",
+        ge=-20, le=60,
+    )
+    Rainfall: float = Field(
+        description="Amount of rainfall recorded in mm",
+        ge=0, le=400,
+    )
+    Humidity3pm: float = Field(
+        description="Humidity at 3pm (%)",
+        ge=0, le=100,
+    )
+    Pressure3pm: float = Field(
+        description="Atmospheric pressure at 3pm (hpa)",
+        ge=900, le=1100,
+    )
+    WindSpeed3pm: float = Field(
+        description="Wind speed at 3pm (km/h)",
         ge=0, le=150,
-    )
-    sex: int = Field(
-        description="Sex of the patient. 1: male; 0: female",
-        ge=0, le=1,
-    )
-    cp: int = Field(
-        description="Chest pain type. 1: typical angina; 2: atypical angina; "
-                    "3: non-anginal pain; 4: asymptomatic",
-        ge=1, le=4,
-    )
-    trestbps: float = Field(
-        description="Resting blood pressure in mm Hg on admission to the hospital",
-        ge=90, le=220,
-    )
-    chol: float = Field(
-        description="Serum cholesterol in mg/dl",
-        ge=110, le=600,
-    )
-    fbs: int = Field(
-        description="Fasting blood sugar. 1: >120 mg/dl; 0: <120 mg/dl",
-        ge=0, le=1,
-    )
-    restecg: int = Field(
-        description="Resting electrocardiographic results. "
-                    "0: normal; 1: ST-T wave abnormality; 2: left ventricular hypertrophy",
-        ge=0, le=2,
-    )
-    thalach: float = Field(
-        description="Maximum heart rate achieved (beats per minute)",
-        ge=50, le=210,
-    )
-    exang: int = Field(
-        description="Exercise induced angina. 1: yes; 0: no",
-        ge=0, le=1,
-    )
-    oldpeak: float = Field(
-        description="ST depression induced by exercise relative to rest",
-        ge=0.0, le=7.0,
-    )
-    slope: int = Field(
-        description="The slope of the peak exercise ST segment. "
-                    "1: upsloping; 2: flat; 3: downsloping",
-        ge=1, le=3,
-    )
-    ca: int = Field(
-        description="Number of major vessels colored by fluoroscopy",
-        ge=0, le=3,
-    )
-    thal: Literal[3, 6, 7] = Field(
-        description="Thalassemia. 3: normal; 6: fixed defect; 7: reversible defect",
     )
 
     model_config = {
         "json_schema_extra": {
             "examples": [
                 {
-                    "age": 67,
-                    "sex": 1,
-                    "cp": 4,
-                    "trestbps": 160.0,
-                    "chol": 286.0,
-                    "fbs": 0,
-                    "restecg": 2,
-                    "thalach": 108.0,
-                    "exang": 1,
-                    "oldpeak": 1.5,
-                    "slope": 2,
-                    "ca": 3,
-                    "thal": 3,
+                    "Location": "Sydney",
+                    "MinTemp": 13.4,
+                    "MaxTemp": 22.9,
+                    "Rainfall": 0.6,
+                    "Humidity3pm": 71,
+                    "Pressure3pm": 1015.3,
+                    "WindSpeed3pm": 24,
                 }
             ]
         }
@@ -190,14 +157,14 @@ class ModelInput(BaseModel):
 
 class ModelOutput(BaseModel):
     """
-    Output schema for the heart disease prediction model.
+    Output schema for the rain prediction model.
 
-    Returns both a boolean and human-readable string for the prediction.
+    Returns both a numeric and human-readable string for the prediction.
     """
     int_output: bool = Field(
-        description="Output of the model. True if the patient has heart disease",
+        description="Output of the model. True if rain is expected tomorrow",
     )
-    str_output: Literal["Healthy patient", "Heart disease detected"] = Field(
+    str_output: Literal["No rain expected tomorrow", "Rain expected tomorrow"] = Field(
         description="Output of the model in string form",
     )
 
@@ -206,7 +173,7 @@ class ModelOutput(BaseModel):
             "examples": [
                 {
                     "int_output": True,
-                    "str_output": "Heart disease detected",
+                    "str_output": "Rain expected tomorrow",
                 }
             ]
         }
@@ -216,11 +183,11 @@ class ModelOutput(BaseModel):
 # ============================================
 # Load model at startup
 # ============================================
-model, version_model, data_dict = load_model("heart_disease_model_prod", "champion")
+model, version_model, data_dict = load_model("rain_prediction_model_prod", "champion")
 
 app = FastAPI(
-    title="Heart Disease Detector API",
-    description="REST API for predicting heart disease using an SVM model. "
+    title="RainTomorrow Prediction API",
+    description="REST API for predicting rain tomorrow using an SVM model. "
                 "Part of the MLOps1 final project.",
     version="1.0.0",
 )
@@ -233,7 +200,7 @@ async def read_root():
     """
     return JSONResponse(
         content=jsonable_encoder(
-            {"message": "Welcome to the Heart Disease Detector API"}
+            {"message": "Welcome to the RainTomorrow Prediction API"}
         )
     )
 
@@ -247,23 +214,17 @@ def predict(
     background_tasks: BackgroundTasks,
 ):
     """
-    Predict whether a patient has heart disease.
+    Predict whether it will rain tomorrow.
 
-    Receives 13 clinical features and returns the prediction
+    Receives meteorological features and returns the prediction
     as both a boolean and a descriptive string.
     """
     # Extract features and convert to DataFrame
-    features_list = [*features.dict().values()]
-    features_key = [*features.dict().keys()]
-
-    features_df = pd.DataFrame(
-        np.array(features_list).reshape([1, -1]),
-        columns=features_key
-    )
+    features_dict = features.dict()
+    features_df = pd.DataFrame([features_dict])
 
     # Process categorical features
     for categorical_col in data_dict["categorical_columns"]:
-        features_df[categorical_col] = features_df[categorical_col].astype(int)
         categories = data_dict["categories_values_per_categorical"][categorical_col]
         features_df[categorical_col] = pd.Categorical(
             features_df[categorical_col], categories=categories
@@ -288,9 +249,9 @@ def predict(
     prediction = model.predict(features_df)
 
     # Convert to string output
-    str_pred = "Healthy patient"
+    str_pred = "No rain expected tomorrow"
     if prediction[0] > 0:
-        str_pred = "Heart disease detected"
+        str_pred = "Rain expected tomorrow"
 
     # Check for model updates in the background
     background_tasks.add_task(check_model)

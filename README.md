@@ -94,8 +94,8 @@ Raw → ETL → Train → MLflow → API
 │
 ├── airflow/
 │   ├── dags/
-│   │   ├── etl_process.py       # DAG: Pipeline ETL (fetch → clean → split → normalize)
-│   │   └── retrain_the_model.py # DAG: Reentrenamiento y comparación con champion
+│   │   ├── etl_rain_process.py       # DAG: Pipeline ETL (fetch → clean → split → normalize)
+│   │   └── retrain_rain_model.py     # DAG: Reentrenamiento y comparación con champion
 │   ├── secrets/
 │   │   ├── variables.yaml        # Variables de Airflow
 │   │   └── connections.yaml      # Conexiones de Airflow
@@ -188,7 +188,7 @@ Respuesta esperada:
 ### 5. Reentrenamiento del modelo (opcional)
 
 1. Ejecutar primero el DAG `process_etl_rain_data` para generar datos nuevos
-2. Ejecutar el DAG `retrain_the_model`
+2. Ejecutar el DAG `retrain_rain_model`
 3. El DAG compara el nuevo modelo con el champion y promueve si es mejor
 
 ## Apagar los servicios

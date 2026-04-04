@@ -1,6 +1,6 @@
 # Licensed under the Apache License, Version 2.0
 # Based on the amq2-service-ml project by Facundo Lucianna
-# Adapted for Heart Disease SVM classification project
+# Adapted for Rain Tomorrow prediction project
 
 # WARNING: This configuration is for local development. Do not use it in a production deployment.
 
@@ -36,6 +36,7 @@ x-airflow-common: &airflow-common
     - ${AIRFLOW_PROJ_DIR:-./airflow}/config:/opt/airflow/config
     - ${AIRFLOW_PROJ_DIR:-./airflow}/plugins:/opt/airflow/plugins
     - ${AIRFLOW_PROJ_DIR:-./airflow}/secrets:/opt/secrets
+    - ./dataset:/opt/airflow/dataset
   networks:
     - frontend
     - backend
