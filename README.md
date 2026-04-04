@@ -148,15 +148,12 @@ Esperar hasta que todos los servicios estén healthy (verificar con `docker ps -
 ### 3. Búsqueda de hiperparámetros
 
 1. Ejecutar la notebook `notebook_example/hyperparameter_search.ipynb`
-2. Se entrenan distintos modelos:
-- Logistig Regression
-- Random Forest
-- XGBoost
-3. Se selecciona el mejor modelo según:
+2. Se realiza una búsqueda de hiperparámetros con GridSearchCV sobre un modelo **XGBoost**
+3. Se evalúa el modelo según:
 - ROC-AUC
 - F1-score
 - Brier Score
-4. El modelo se registra en MLFlow como **champion**.
+4. El modelo se registra en MLflow como **champion**.
 
 ### 4. Usar la API de predicción
 
