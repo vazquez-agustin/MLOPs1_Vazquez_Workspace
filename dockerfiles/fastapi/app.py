@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 
 from typing import Literal
-from fastapi import FastAPI, Body, BackgroundTasks
+from fastapi import FastAPI, Body, BackgroundTasks, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
@@ -35,6 +35,9 @@ def load_model(model_name: str, alias: str):
     :param alias: The alias of the model version (e.g., "champion").
     :return: Tuple of (model, version, data_dictionary).
     """
+    model_ml = None
+    version_model_ml = 0
+
     try:
         mlflow.set_tracking_uri('http://mlflow:5000')
         client_mlflow = mlflow.MlflowClient()
@@ -43,11 +46,13 @@ def load_model(model_name: str, alias: str):
         model_ml = mlflow.sklearn.load_model(model_data_mlflow.source)
         version_model_ml = int(model_data_mlflow.version)
     except Exception:
-        # If there is no registry in MLflow, open the default model
-        file_ml = open('/app/files/model.pkl', 'rb')
-        model_ml = pickle.load(file_ml)
-        file_ml.close()
-        version_model_ml = 0
+        # If there is no registry in MLflow, try the local fallback model
+        try:
+            file_ml = open('/app/files/model.pkl', 'rb')
+            model_ml = pickle.load(file_ml)
+            file_ml.close()
+        except FileNotFoundError:
+            print("WARNING: No model available. Run the ETL + training pipeline first.")
 
     try:
         # Load information of the ETL pipeline from S3
@@ -219,6 +224,12 @@ def predict(
     Receives meteorological features and returns the prediction
     as both a boolean and a descriptive string.
     """
+    if model is None:
+        raise HTTPException(
+            status_code=503,
+            detail="No model available. Run the ETL and training pipeline first."
+        )
+
     # Extract features and convert to DataFrame
     features_dict = features.dict()
     features_df = pd.DataFrame([features_dict])
