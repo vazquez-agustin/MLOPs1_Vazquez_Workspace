@@ -3,10 +3,11 @@
 ### Operaciones de Aprendizaje Automático I - CEIA - FIUBA
 
 **Equipo:**
-- Paola Andrea Blanco (a2303)
-- Agustín Jesús Vazquez (e2301)
-- Facundo Manuel Quiroga (a2305)
-- Victor Gabriel Peralta (a2322)
+
+* Paola Andrea Blanco (a2303)
+* Agustín Jesús Vazquez (e2301)
+* Facundo Manuel Quiroga (a2305)
+* Victor Gabriel Peralta (a2322)
 
 **Profesor:** Facundo Lucianna
 
@@ -18,37 +19,38 @@ Implementación productiva de un modelo de machine learning para la predicción 
 
 El modelo fue originalmente desarrollado en la materia **Aprendizaje de Máquina I** sobre el dataset *Rain in Australia*, y en este proyecto se lo lleva a un entorno productivo completo incorporando prácticas de **MLOps**:
 
-- Orquestación de pipelines con Apache Airflow  
-- Tracking de experimentos y modelos con MLflow  
-- Data Lake basado en S3 (MinIO)  
-- Servicio de predicción mediante API REST con FastAPI  
+* Orquestación de pipelines con Apache Airflow
+* Tracking de experimentos y modelos con MLflow
+* Data Lake basado en S3 (MinIO)
+* Servicio de predicción mediante API REST con FastAPI
 
 ## Problema de Negocio
 
 El objetivo es predecir si lloverá al día siguiente en distintas localidades de Australia, a partir de variables meteorológicas actuales.
 
 Este tipo de modelo puede utilizarse para:
-- planificación agrícola  
-- logística y transporte  
-- toma de decisiones en energía y recursos  
+
+* planificación agrícola
+* logística y transporte
+* toma de decisiones en energía y recursos
 
 ---
 
 ## Dataset
 
-- **Fuente:** Rain in Australia (Kaggle)
-- **Observaciones:** ~145.000
-- **Variables:** 23
-- **Variable objetivo:** `RainTomorrow` (Yes / No)
-- **Desbalance:** ~77% No / 23% Yes
+* **Fuente:** Rain in Australia (Kaggle)
+* **Observaciones:** ~145.000
+* **Variables:** 23
+* **Variable objetivo:** `RainTomorrow` (Yes / No)
+* **Desbalance:** ~77% No / 23% Yes
 
 ---
 
 ## Arquitectura de Servicios
 
 | Servicio | Puerto | Descripción |
-|---|---|---|
-| Apache Airflow | [localhost:8080](http://localhost:8080) | Orquestación de pipelines ETL y reentrenamiento |
+| --- | --- | --- |
+| Apache Airflow | [localhost:8080](http://localhost:8080) | Orquestación de pipelines ETL, entrenamiento y reentrenamiento |
 | MLflow | [localhost:5001](http://localhost:5001) | Tracking de experimentos y registro de modelos |
 | MinIO (S3) | [localhost:9001](http://localhost:9001) | Data Lake (almacenamiento de datos y artefactos) |
 | FastAPI | [localhost:8800](http://localhost:8800) | REST API para servir predicciones |
@@ -61,24 +63,41 @@ Este tipo de modelo puede utilizarse para:
 
 El flujo completo del sistema es el siguiente:
 
-Raw → ETL → Train → MLflow → API
+```
+Raw → ETL DAG → Entrenamiento Inicial DAG → MLflow (champion) → FastAPI
+                                                    ↑
+                                         Retrain DAG (periódico)
+```
 
-### ETL Pipeline (Airflow)
-- Extracción de datos
-- Limpieza de valores faltantes
-- Encoding de variables categóricas
-- Escalado de variables numéricas
-- Split train/test
+### ETL Pipeline (`process_etl_rain_data`)
 
-### Training Pipeline
-- Entrenamiento de múltiples modelos
-- Optimización de hiperparámetros
-- Evaluación de métricas
-- Registro en MLflow
+* Extracción del dataset desde el directorio local
+* Limpieza de valores faltantes
+* Encoding de variables categóricas
+* Escalado de variables numéricas
+* Split train/test
+* Almacenamiento en MinIO (`s3://data/final/`)
+
+### Entrenamiento Inicial (`train_initial_model`)
+
+* Carga de datos procesados desde MinIO
+* Búsqueda de hiperparámetros con `RandomizedSearchCV` (10 iteraciones × 2 folds = 20 fits)
+* Modelo: XGBoost optimizando F1-score (métrica adecuada para datos desbalanceados)
+* Registro de parámetros, métricas y modelo en MLflow
+* Asignación del alias `champion` al mejor modelo
+
+### Reentrenamiento (`retrain_the_model`)
+
+* Carga de datos frescos desde MinIO
+* Reentrenamiento con los hiperparámetros del champion actual
+* Comparación del nuevo modelo contra el champion (F1-score)
+* Promoción automática si el nuevo modelo supera al champion
 
 ### Model Serving
-- Exposición del modelo mediante FastAPI
-- Endpoint `/predict`
+
+* FastAPI carga el modelo con alias `champion` desde MLflow al iniciar
+* Endpoint `POST /predict/` recibe variables meteorológicas y devuelve la predicción
+* Documentación interactiva disponible en `/docs`
 
 ---
 
@@ -86,95 +105,118 @@ Raw → ETL → Train → MLflow → API
 
 ```
 .
-├── docker-compose.yaml          # Definición de todos los servicios
-├── .env                          # Variables de configuración
+├── docker-compose.yaml               # Definición de todos los servicios
+├── .env                              # Variables de configuración
 ├── .gitignore
 ├── README.md
 ├── CONTRIBUTING.md
 │
 ├── airflow/
 │   ├── dags/
-│   │   ├── etl_rain_process.py       # DAG: Pipeline ETL (fetch → clean → split → normalize)
+│   │   ├── etl_rain_process.py       # DAG: Pipeline ETL
+│   │   ├── train_initial_model.py    # DAG: Entrenamiento inicial con búsqueda de hiperparámetros
 │   │   └── retrain_rain_model.py     # DAG: Reentrenamiento y comparación con champion
 │   ├── secrets/
-│   │   ├── variables.yaml        # Variables de Airflow
-│   │   └── connections.yaml      # Conexiones de Airflow
+│   │   ├── variables.yaml            # Variables de Airflow
+│   │   └── connections.yaml          # Conexiones de Airflow
 │   ├── config/
 │   ├── logs/
 │   └── plugins/
 │
 ├── dockerfiles/
-│   ├── airflow/                  # Imagen custom de Airflow
+│   ├── airflow/                      # Imagen custom de Airflow
 │   │   ├── Dockerfile
 │   │   └── requirements.txt
-│   ├── mlflow/                   # Imagen custom de MLflow
+│   ├── mlflow/                       # Imagen custom de MLflow
 │   │   ├── Dockerfile
 │   │   └── requirements.txt
-│   ├── postgres/                 # Imagen custom de PostgreSQL
+│   ├── postgres/                     # Imagen custom de PostgreSQL
 │   │   ├── Dockerfile
 │   │   └── mlflow.sql
-│   └── fastapi/                  # Imagen custom de FastAPI
+│   └── fastapi/                      # Imagen custom de FastAPI
 │       ├── Dockerfile
-│       ├── requirements.txt
-│       ├── app.py                # Aplicación FastAPI
-│       └── files/                # Fallback files (modelo y datos por defecto)
-│           └── data.json
+│       ├── requirements.txt          # Incluye xgboost (requerido para cargar el modelo)
+│       ├── app.py                    # Aplicación FastAPI
+│       └── files/
+│           └── data.json             # Datos de referencia para preprocesamiento
 │
 └── notebook_example/
-    └── hyperparameter_search.ipynb  # Búsqueda de hiperparámetros con MLflow
+    └── hyperparameter_search.ipynb   # Búsqueda exhaustiva de hiperparámetros (referencia)
 ```
+
+---
 
 ## Instalación y Uso
 
 ### Requisitos Previos
-- [Docker](https://docs.docker.com/engine/install/) instalado
-- Al menos 4GB de RAM disponible para Docker
-- Al menos 2 CPUs
+
+* [Docker Desktop](https://docs.docker.com/engine/install/) instalado y corriendo
+* Al menos 4 GB de RAM disponible para Docker
+* Al menos 2 CPUs
+
+> **Linux:** Antes de levantar los servicios, correr:
+> ```bash
+> echo "AIRFLOW_UID=$(id -u)" >> .env
+> ```
 
 ### 1. Levantar los servicios
 
 ```bash
-docker compose --profile all up
+docker compose --profile all up --build -d
 ```
 
-Esperar hasta que todos los servicios estén healthy (verificar con `docker ps -a`).
+Esperar hasta que todos los servicios estén healthy:
+
+```bash
+docker ps -a
+```
 
 ### 2. Ejecutar el pipeline ETL
 
-1. Acceder a Airflow: [http://localhost:8080](http://localhost:8080) (usuario: `airflow`, contraseña: `airflow`)
+1. Acceder a Airflow: http://localhost:8080 (usuario: `airflow`, contraseña: `airflow`)
 2. Activar y ejecutar el DAG `process_etl_rain_data`
-3. Esto creará los datos procesados en el bucket `s3://data`
+3. Esperar que todos los tasks estén en verde
+4. Esto genera los datos procesados en el bucket `s3://data/final/`
 
-### 3. Búsqueda de hiperparámetros
+### 3. Entrenar el modelo inicial
 
-1. Ejecutar la notebook `notebook_example/hyperparameter_search.ipynb`
-2. Se realiza una búsqueda de hiperparámetros con GridSearchCV sobre un modelo **XGBoost**
-3. Se evalúa el modelo según:
-- ROC-AUC
-- F1-score
-- Brier Score
-4. El modelo se registra en MLflow como **champion**.
+1. En Airflow, activar y ejecutar el DAG `train_initial_model`
+2. El DAG realiza una búsqueda de hiperparámetros con `RandomizedSearchCV` sobre XGBoost
+3. Registra el mejor modelo en MLflow como **champion**
+4. Duración estimada: 5-10 minutos
 
-### 4. Usar la API de predicción
+### 4. Verificar que FastAPI levantó correctamente
 
 ```bash
-curl -X 'POST' \
-  'http://localhost:8800/predict/' \
+docker ps -a | grep fastapi
+```
+
+Debe aparecer como `Up`. Si todavía figura como `Restarting`, reiniciarlo:
+
+```bash
+docker restart fastapi
+```
+
+### 5. Usar la API de predicción
+
+```bash
+curl -X POST 'http://localhost:8800/predict/' \
   -H 'Content-Type: application/json' \
   -d '{
-  "features": {
-    "Location": "Sydney",
-    "MinTemp": 13.4,
-    "MaxTemp": 22.9,
-    "Rainfall": 0.6,
-    "Humidity3pm": 71,
-    "Pressure3pm": 1015.3,
-    "WindSpeed3pm": 24
-  }
-}'
+    "features": {
+      "Location": "Sydney",
+      "MinTemp": 13.4,
+      "MaxTemp": 22.9,
+      "Rainfall": 0.6,
+      "Humidity3pm": 71,
+      "Pressure3pm": 1015.3,
+      "WindSpeed3pm": 24
+    }
+  }'
 ```
 
 Respuesta esperada:
+
 ```json
 {
   "int_output": 1,
@@ -182,11 +224,13 @@ Respuesta esperada:
 }
 ```
 
-### 5. Reentrenamiento del modelo (opcional)
+### 6. Reentrenamiento del modelo (opcional)
 
-1. Ejecutar primero el DAG `process_etl_rain_data` para generar datos nuevos
-2. Ejecutar el DAG `retrain_rain_model`
-3. El DAG compara el nuevo modelo con el champion y promueve si es mejor
+1. Ejecutar primero `process_etl_rain_data` para generar datos nuevos
+2. Ejecutar el DAG `retrain_the_model`
+3. El DAG compara el nuevo modelo contra el champion y lo promueve si es mejor
+
+---
 
 ## Apagar los servicios
 
@@ -194,13 +238,15 @@ Respuesta esperada:
 docker compose --profile all down
 ```
 
-Para eliminar toda la infraestructura (datos incluidos):
+Para eliminar toda la infraestructura incluyendo datos y volúmenes:
 
 ```bash
 docker compose down --rmi all --volumes
 ```
 
-## Conexión con los buckets (desde local)
+---
+
+## Conexión con MinIO desde local
 
 Para conectarse a MinIO desde notebooks o scripts locales:
 
@@ -212,16 +258,30 @@ os.environ['AWS_ENDPOINT_URL_S3'] = 'http://localhost:9000'
 os.environ['MLFLOW_S3_ENDPOINT_URL'] = 'http://localhost:9000'
 ```
 
-## TODOs para el grupo
+---
 
-- [ ] Generar modelo fallback (model.pkl)
-- [ ] Agregar más métricas o visualizaciones al notebook de hiperparámetros
-- [ ] Considerar usar Optuna en lugar de GridSearchCV para optimización más eficiente
-- [ ] Agregar tests unitarios para la API
-- [ ] Mejorar documentación de los endpoints de FastAPI
-- [ ] Considerar agregar un DAG de monitoreo o drift detection
+## Estado del Proyecto
+
+### Implementado ✅
+
+* Pipeline ETL completo orquestado con Airflow
+* DAG de entrenamiento inicial con búsqueda de hiperparámetros (RandomizedSearchCV)
+* DAG de reentrenamiento con patrón champion/challenger
+* Tracking de experimentos y Model Registry con MLflow
+* API REST con FastAPI sirviendo predicciones del modelo champion
+* Infraestructura completa dockerizada (Airflow, MLflow, MinIO, PostgreSQL, FastAPI)
+* `xgboost` agregado como dependencia en la imagen de FastAPI
+
+### Pendiente ⚠️
+
+* Generar modelo fallback (`model.pkl`) para que FastAPI pueda arrancar sin un champion en MLflow
+* Agregar tests unitarios para los endpoints de FastAPI
+* Mejorar documentación de los endpoints en Swagger (descripciones, ejemplos, códigos de error)
+* Agregar un DAG de monitoreo o drift detection para detectar degradación del modelo en producción
+
+---
 
 ## Basado en
 
-- [amq2-service-ml](https://github.com/facundolucianna/amq2-service-ml) por Facundo Lucianna
-- Branch de ejemplo: [example_implementation](https://github.com/facundolucianna/amq2-service-ml/tree/example_implementation)
+* [amq2-service-ml](https://github.com/facundolucianna/amq2-service-ml) por Facundo Lucianna
+* Branch de ejemplo: [example_implementation](https://github.com/facundolucianna/amq2-service-ml/tree/example_implementation)
