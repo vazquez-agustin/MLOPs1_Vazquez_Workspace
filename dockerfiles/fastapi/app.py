@@ -25,32 +25,52 @@ from typing_extensions import Annotated
 
 def load_model(model_name: str, alias: str):
     """
-    Load a trained model and associated data dictionary.
+    Carga el modelo entrenado y el diccionario de datos del pipeline ETL.
 
-    Attempts to load the model from MLflow registry. If not found,
-    falls back to a local default model file. Also loads the ETL
-    pipeline metadata (columns, scaler params) from S3 or local file.
+    Intenta cargar el modelo desde el MLflow Registry. Si no lo encuentra,
+    intenta cargar un modelo fallback local. Si tampoco existe el fallback,
+    retorna None sin crashear para que la API pueda arrancar igual.
 
-    :param model_name: The name of the model in MLflow registry.
-    :param alias: The alias of the model version (e.g., "champion").
-    :return: Tuple of (model, version, data_dictionary).
+    También carga los metadatos del pipeline ETL (columnas, parámetros del
+    scaler) desde S3/MinIO o desde un archivo local como fallback.
+
+    :param model_name: Nombre del modelo en el MLflow Registry.
+    :param alias: Alias de la versión del modelo (ej: "champion").
+    :return: Tupla de (modelo, versión, diccionario_de_datos).
+             El modelo puede ser None si no está disponible.
     """
     try:
+        # Intentar cargar el modelo champion desde MLflow
         mlflow.set_tracking_uri('http://mlflow:5000')
         client_mlflow = mlflow.MlflowClient()
 
         model_data_mlflow = client_mlflow.get_model_version_by_alias(model_name, alias)
         model_ml = mlflow.sklearn.load_model(model_data_mlflow.source)
         version_model_ml = int(model_data_mlflow.version)
-    except Exception:
-        # If there is no registry in MLflow, open the default model
-        file_ml = open('/app/files/model.pkl', 'rb')
-        model_ml = pickle.load(file_ml)
-        file_ml.close()
-        version_model_ml = 0
+        print(f"[INFO] Modelo cargado desde MLflow. Versión: {version_model_ml}")
+
+    except Exception as e:
+        print(f"[WARNING] No se pudo cargar el modelo desde MLflow: {e}")
+
+        # Intentar cargar el modelo fallback local
+        try:
+            file_ml = open('/app/files/model.pkl', 'rb')
+            model_ml = pickle.load(file_ml)
+            file_ml.close()
+            version_model_ml = 0
+            print("[INFO] Modelo cargado desde fallback local.")
+
+        except Exception:
+            # Si no hay modelo en MLflow ni fallback local, retornar None.
+            # La API arrancará en modo "sin modelo" y avisará al usuario
+            # en lugar de crashear el servicio completo.
+            print("[WARNING] No se encontró ningún modelo disponible.")
+            print("[WARNING] Ejecutar el DAG 'train_initial_model' en Airflow.")
+            model_ml = None
+            version_model_ml = -1
 
     try:
-        # Load information of the ETL pipeline from S3
+        # Cargar metadatos del pipeline ETL desde S3/MinIO
         s3 = boto3.client('s3')
         s3.head_object(Bucket='data', Key='data_info/data.json')
         result_s3 = s3.get_object(Bucket='data', Key='data_info/data.json')
@@ -64,20 +84,24 @@ def load_model(model_name: str, alias: str):
             data_dictionary["standard_scaler_std"]
         )
     except Exception:
-        # If data dictionary is not found in S3, load from local file
-        file_s3 = open('/app/files/data.json', 'r')
-        data_dictionary = json.load(file_s3)
-        file_s3.close()
+        # Fallback: cargar metadatos desde archivo local
+        try:
+            file_s3 = open('/app/files/data.json', 'r')
+            data_dictionary = json.load(file_s3)
+            file_s3.close()
+        except Exception:
+            data_dictionary = None
 
     return model_ml, version_model_ml, data_dictionary
 
 
 def check_model():
     """
-    Check for updates in the model registry and hot-reload if needed.
+    Verifica si hay una versión más nueva del modelo en MLflow y recarga si es necesario.
 
-    Compares the current model version with the champion version in MLflow.
-    If versions differ, reloads the model, version, and data dictionary.
+    Compara la versión actual con la versión champion en MLflow.
+    Si hay una versión nueva, recarga el modelo automáticamente (hot-reload).
+    Se ejecuta en background después de cada predicción.
     """
     global model
     global data_dict
@@ -95,6 +119,7 @@ def check_model():
 
         if new_version_model != version_model:
             model, version_model, data_dict = load_model(model_name, alias)
+            print(f"[INFO] Modelo actualizado a versión {version_model}")
     except Exception:
         pass
 
@@ -105,10 +130,10 @@ def check_model():
 
 class ModelInput(BaseModel):
     """
-    Input schema for the rain prediction model.
+    Esquema de entrada para el modelo de predicción de lluvia.
 
-    Defines the meteorological features required for prediction,
-    matching the weatherAUS dataset.
+    Define las variables meteorológicas requeridas para la predicción,
+    correspondientes al dataset weatherAUS.
     """
     Location: str = Field(
         description="Location of the weather station in Australia",
@@ -157,9 +182,9 @@ class ModelInput(BaseModel):
 
 class ModelOutput(BaseModel):
     """
-    Output schema for the rain prediction model.
+    Esquema de salida del modelo de predicción de lluvia.
 
-    Returns both a numeric and human-readable string for the prediction.
+    Devuelve tanto un valor numérico como una descripción legible de la predicción.
     """
     int_output: bool = Field(
         description="Output of the model. True if rain is expected tomorrow",
@@ -181,9 +206,24 @@ class ModelOutput(BaseModel):
 
 
 # ============================================
-# Load model at startup
+# Carga del modelo al iniciar la API
 # ============================================
-model, version_model, data_dict = load_model("rain_prediction_model_prod", "champion")
+# Se intenta cargar el modelo champion desde MLflow.
+# Si no hay modelo disponible (MLflow vacío y sin fallback local),
+# la API arranca igual en modo "sin modelo".
+# El endpoint /predict/ avisará al usuario con un mensaje claro
+# en lugar de devolver un error 500 inesperado.
+model = None
+version_model = 0
+data_dict = None
+
+try:
+    model, version_model, data_dict = load_model("rain_prediction_model_prod", "champion")
+except Exception as e:
+    print(f"[WARNING] La API arrancó sin modelo disponible: {e}")
+    print("[WARNING] Ejecutar el DAG 'train_initial_model' en Airflow.")
+    print("[WARNING] Luego llamar a POST /reload/ para cargar el modelo sin reiniciar.")
+
 
 app = FastAPI(
     title="RainTomorrow Prediction API",
@@ -196,12 +236,15 @@ app = FastAPI(
 @app.get("/")
 async def read_root():
     """
-    Root endpoint. Returns a welcome message confirming the API is running.
+    Endpoint raíz. Confirma que la API está corriendo e informa el estado del modelo.
     """
+    estado_modelo = "disponible" if model is not None else "no disponible - ejecutar DAG train_initial_model"
     return JSONResponse(
-        content=jsonable_encoder(
-            {"message": "Welcome to the RainTomorrow Prediction API"}
-        )
+        content=jsonable_encoder({
+            "message": "Welcome to the RainTomorrow Prediction API",
+            "model_status": estado_modelo,
+            "model_version": version_model if model is not None else None,
+        })
     )
 
 
@@ -214,46 +257,98 @@ def predict(
     background_tasks: BackgroundTasks,
 ):
     """
-    Predict whether it will rain tomorrow.
+    Predice si lloverá mañana a partir de variables meteorológicas.
 
-    Receives meteorological features and returns the prediction
-    as both a boolean and a descriptive string.
+    Si el modelo aún no fue entrenado o registrado en MLflow,
+    devuelve un error 503 con instrucciones claras en lugar de crashear.
     """
-    # Extract features and convert to DataFrame
+    # Verificar si el modelo está disponible antes de intentar predecir.
+    # Esto ocurre cuando la API arrancó antes de que se corriera el DAG
+    # de entrenamiento inicial y no hay modelo champion en MLflow.
+    if model is None or data_dict is None:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": "Modelo no disponible",
+                "detail": (
+                    "El modelo aún no fue entrenado o registrado en MLflow. "
+                    "Por favor seguir estos pasos: "
+                    "1) Ejecutar el DAG 'process_etl_rain_data' en Airflow (http://localhost:8080). "
+                    "2) Ejecutar el DAG 'train_initial_model' en Airflow. "
+                    "3) Llamar a POST /reload/ para cargar el modelo sin reiniciar la API."
+                )
+            }
+        )
+
+    # Convertir input a DataFrame
     features_dict = features.dict()
     features_df = pd.DataFrame([features_dict])
 
-    # Process categorical features
+    # Procesar variables categóricas
     for categorical_col in data_dict["categorical_columns"]:
         categories = data_dict["categories_values_per_categorical"][categorical_col]
         features_df[categorical_col] = pd.Categorical(
             features_df[categorical_col], categories=categories
         )
 
-    # Convert categorical features into dummy variables
+    # Convertir categóricas a variables dummy
     features_df = pd.get_dummies(
         data=features_df,
         columns=data_dict["categorical_columns"],
         drop_first=True,
     )
 
-    # Reorder DataFrame columns to match training order
+    # Reordenar columnas para que coincidan con el orden del entrenamiento
     features_df = features_df[data_dict["columns_after_dummy"]]
 
-    # Scale using the fitted StandardScaler parameters
+    # Escalar usando los parámetros del StandardScaler del pipeline ETL
     features_df = (
         features_df - data_dict["standard_scaler_mean"]
     ) / data_dict["standard_scaler_std"]
 
-    # Make prediction
+    # Realizar predicción
     prediction = model.predict(features_df)
 
-    # Convert to string output
     str_pred = "No rain expected tomorrow"
     if prediction[0] > 0:
         str_pred = "Rain expected tomorrow"
 
-    # Check for model updates in the background
+    # Verificar actualizaciones del modelo en background (hot-reload)
     background_tasks.add_task(check_model)
 
     return ModelOutput(int_output=bool(prediction[0].item()), str_output=str_pred)
+
+
+@app.post("/reload/")
+async def reload_model():
+    """
+    Recarga el modelo champion desde MLflow sin reiniciar la API.
+
+    Útil para cargar el modelo después de correr el DAG de entrenamiento
+    sin necesidad de hacer docker restart al contenedor de FastAPI.
+    """
+    global model, version_model, data_dict
+    try:
+        model, version_model, data_dict = load_model("rain_prediction_model_prod", "champion")
+
+        if model is None:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "error": "No se encontró ningún modelo",
+                    "detail": "Asegurarse de haber corrido los DAGs 'process_etl_rain_data' y 'train_initial_model' en Airflow."
+                }
+            )
+
+        return JSONResponse(content={
+            "message": f"Modelo recargado correctamente.",
+            "model_version": version_model,
+        })
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "No se pudo recargar el modelo",
+                "detail": str(e)
+            }
+        )
