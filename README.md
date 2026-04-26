@@ -235,24 +235,6 @@ Respuesta esperada:
 
 ---
 
-## Flujo de Contribución
-
-Este repositorio sigue la convención definida en CONTRIBUTING.md.
-
-1. Crear rama desde `main` con formato `feature/nombre-descriptivo`.
-2. Realizar commits descriptivos con prefijo: `feat:`, `fix:`, `docs:`, `refactor:` o `chore:`.
-3. Verificar localmente que el proyecto levanta correctamente:
-
-```bash
-docker compose --profile all up --build -d
-```
-
-4. Abrir Pull Request hacia `main`.
-5. Esperar al menos una revisión de un/a compañero/a antes del merge.
-6. No hacer pushes directos a `main`.
-
----
-
 ## Apagar los servicios
 
 ```bash
