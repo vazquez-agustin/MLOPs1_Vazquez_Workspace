@@ -123,6 +123,9 @@ Raw → ETL DAG → Entrenamiento Inicial DAG → MLflow (champion) → FastAPI
 │   ├── logs/
 │   └── plugins/
 │
+├── dataset/
+│   └── weatherAUS.csv              # Dataset fuente utilizado por el ETL
+│
 ├── dockerfiles/
 │   ├── airflow/                      # Imagen custom de Airflow
 │   │   ├── Dockerfile
@@ -188,7 +191,7 @@ docker ps -a
 ### 4. Verificar que FastAPI levantó correctamente
 
 ```bash
-docker ps -a | grep fastapi
+docker ps -a --filter name=fastapi
 ```
 
 Debe aparecer como `Up`. Si todavía figura como `Restarting`, reiniciarlo:
@@ -232,6 +235,24 @@ Respuesta esperada:
 
 ---
 
+## Flujo de Contribución
+
+Este repositorio sigue la convención definida en CONTRIBUTING.md.
+
+1. Crear rama desde `main` con formato `feature/nombre-descriptivo`.
+2. Realizar commits descriptivos con prefijo: `feat:`, `fix:`, `docs:`, `refactor:` o `chore:`.
+3. Verificar localmente que el proyecto levanta correctamente:
+
+```bash
+docker compose --profile all up --build -d
+```
+
+4. Abrir Pull Request hacia `main`.
+5. Esperar al menos una revisión de un/a compañero/a antes del merge.
+6. No hacer pushes directos a `main`.
+
+---
+
 ## Apagar los servicios
 
 ```bash
@@ -271,13 +292,6 @@ os.environ['MLFLOW_S3_ENDPOINT_URL'] = 'http://localhost:9000'
 * API REST con FastAPI sirviendo predicciones del modelo champion
 * Infraestructura completa dockerizada (Airflow, MLflow, MinIO, PostgreSQL, FastAPI)
 * `xgboost` agregado como dependencia en la imagen de FastAPI
-
-### Pendiente ⚠️
-
-* Generar modelo fallback (`model.pkl`) para que FastAPI pueda arrancar sin un champion en MLflow
-* Agregar tests unitarios para los endpoints de FastAPI
-* Mejorar documentación de los endpoints en Swagger (descripciones, ejemplos, códigos de error)
-* Agregar un DAG de monitoreo o drift detection para detectar degradación del modelo en producción
 
 ---
 
